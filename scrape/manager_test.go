@@ -1069,8 +1069,8 @@ func TestUnregisterMetrics(t *testing.T) {
 // TestNHCBAndCTZeroIngestion verifies that both ConvertClassicHistogramsToNHCBEnabled
 // and EnableCreatedTimestampZeroIngestion can be used simultaneously without errors.
 // This test addresses issue #17216 by ensuring the previously blocking check has been removed.
-// It also tests that exemplars are correctly parsed with both features enabled, addressing
-// the original concern from issue #15137 about losing exemplars during CT parsing.
+// The test verifies that the presence of exemplars in the input does not cause errors,
+// although exemplars are not preserved during NHCB conversion (as documented below).
 func TestNHCBAndCTZeroIngestion(t *testing.T) {
 	t.Parallel()
 
@@ -1100,8 +1100,7 @@ func TestNHCBAndCTZeroIngestion(t *testing.T) {
 				fail = false
 				w.Header().Set("Content-Type", `application/openmetrics-text`)
 
-				// Expose a histogram with created timestamp and exemplars.
-				// This tests the fix for #15137 where exemplars were lost during CT parsing.
+				// Expose a histogram with created timestamp and exemplars to verify no parsing errors occur.
 				fmt.Fprint(w, `# HELP test_histogram A histogram with created timestamp and exemplars
 # TYPE test_histogram histogram
 test_histogram_bucket{le="0.0"} 1
