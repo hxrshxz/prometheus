@@ -1075,7 +1075,9 @@ func TestNHCBAndCTZeroIngestion(t *testing.T) {
 	t.Parallel()
 
 	const (
-		mName                = "test_histogram"
+		mName = "test_histogram"
+		// The expected sum of the histogram, as defined by the test's OpenMetrics exposition data.
+		// This value (45.5) is the sum reported in the test_histogram_sum metric below.
 		expectedHistogramSum = 45.5
 	)
 
@@ -1126,6 +1128,7 @@ test_histogram_created 1520430001
 	// Configuration with both convert_classic_histograms_to_nhcb enabled and CT zero ingestion enabled.
 	testConfig := fmt.Sprintf(`
 global:
+  # Use a very long scrape_interval to prevent automatic scraping during the test.
   scrape_interval: 9999m
   scrape_timeout: 5s
 
