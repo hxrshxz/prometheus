@@ -1074,7 +1074,10 @@ func TestUnregisterMetrics(t *testing.T) {
 func TestNHCBAndCTZeroIngestion(t *testing.T) {
 	t.Parallel()
 
-	const mName = "test_histogram"
+	const (
+		mName                = "test_histogram"
+		expectedHistogramSum = 45.5
+	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1135,35 +1138,36 @@ scrape_configs:
 
 	applyConfig(t, testConfig, scrapeManager, discoveryManager)
 
-	// Wait for scrape to complete successfully.
-	ctx, cancel = context.WithTimeout(ctx, 1*time.Minute)
-	defer cancel()
-	require.NoError(t, runutil.Retry(100*time.Millisecond, ctx.Done(), func() error {
+	// Helper function to get matching histograms to avoid race conditions.
+	getMatchingHistograms := func() []histogramSample {
 		app.mtx.Lock()
 		defer app.mtx.Unlock()
 
-		if len(app.resultHistograms) > 0 {
-			return nil
+		var got []histogramSample
+		for _, h := range app.resultHistograms {
+			if h.metric.Get(model.MetricNameLabel) == mName {
+				got = append(got, h)
+			}
 		}
-		return errors.New("expected histogram samples, got none")
-	}), "after 1 minute")
+		return got
+	}
+
+	require.Eventually(t, func() bool {
+		return len(getMatchingHistograms()) > 0
+	}, 1*time.Minute, 100*time.Millisecond, "expected histogram samples, got none")
 
 	// Verify that samples were ingested (proving both features work together).
-	app.mtx.Lock()
-	defer app.mtx.Unlock()
-
-	var got []histogramSample
-	for _, h := range app.resultHistograms {
-		if h.metric.Get(model.MetricNameLabel) == mName {
-			got = append(got, h)
-		}
-	}
+	got := getMatchingHistograms()
 
 	// With CT zero ingestion enabled and a created timestamp present, we expect 2 samples:
 	// one zero sample and one actual sample.
 	require.Len(t, got, 2, "expected 2 histogram samples (zero sample + actual sample)")
 	require.Equal(t, histogram.Histogram{}, *got[0].h, "first sample should be zero sample")
-	require.NotEqual(t, 0.0, got[1].h.Sum, "second sample should have non-zero sum")
+	require.InDelta(t, expectedHistogramSum, got[1].h.Sum, 1e-9, "second sample should retain the expected sum")
+
+	// Note: Exemplars from classic histogram buckets are not preserved when converting to NHCB
+	// because the bucket series are replaced with a single native histogram sample. This is expected
+	// behavior. The test verifies that the presence of exemplars in the input doesn't cause errors.
 
 	// The test successfully completes, proving that both ConvertClassicHistogramsToNHCBEnabled
 	// and EnableCreatedTimestampZeroIngestion can work together without the error that was
