@@ -23,6 +23,9 @@ import (
 	"github.com/cespare/xxhash/v2"
 )
 
+// ImplementationName is the name of the labels implementation.
+const ImplementationName = "stringlabels"
+
 // Labels is implemented by a single flat string holding name/value pairs.
 // Each name and value is preceded by its length, encoded as a single byte
 // for size 0-254, or the following 3 bytes little-endian, if the first byte is 255.
@@ -421,6 +424,7 @@ func (ls Labels) Validate(f func(l Label) error) error {
 }
 
 // DropMetricName returns Labels with the "__name__" removed.
+//
 // Deprecated: Use DropReserved instead.
 func (ls Labels) DropMetricName() Labels {
 	return ls.DropReserved(func(n string) bool { return n == MetricName })

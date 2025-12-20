@@ -50,6 +50,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.uber.org/atomic"
+	"go.uber.org/goleak"
 
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
@@ -1257,6 +1259,45 @@ func TestScrapeLoopForcedErr(t *testing.T) {
 	}
 }
 
+func TestScrapeLoopRun_ContextCancelTerminatesBlockedSend(t *testing.T) {
+	// Regression test for issue #17553
+	defer goleak.VerifyNone(t)
+
+	var (
+		signal  = make(chan struct{})
+		errc    = make(chan error)
+		scraper = &testScraper{}
+		app     = func(context.Context) storage.Appender { return &nopAppender{} }
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sl := newBasicScrapeLoop(t, ctx, scraper, app, 100*time.Millisecond)
+
+	forcedErr := errors.New("forced err")
+	sl.setForcedError(forcedErr)
+
+	scraper.scrapeFunc = func(context.Context, io.Writer) error {
+		return nil
+	}
+
+	go func() {
+		sl.run(errc)
+		close(signal)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	cancel()
+
+	select {
+	case <-signal:
+		// success case
+	case <-time.After(3 * time.Second):
+		require.FailNow(t, "Scrape loop failed to exit on context cancellation (goroutine leak detected)")
+	}
+}
+
 func TestScrapeLoopMetadata(t *testing.T) {
 	var (
 		signal        = make(chan struct{})
@@ -2195,7 +2236,6 @@ func TestScrapeLoop_HistogramBucketLimit(t *testing.T) {
 		}
 		return l
 	}
-	sl.sampleLimit = app.limit
 
 	metric := dto.Metric{}
 	err := sl.metrics.targetScrapeNativeHistogramBucketLimit.Write(&metric)
@@ -3281,8 +3321,8 @@ func TestTargetScraperScrapeOK(t *testing.T) {
 			}
 
 			contentTypes := strings.SplitSeq(accept, ",")
-			for ct := range contentTypes {
-				match := qValuePattern.FindStringSubmatch(ct)
+			for st := range contentTypes {
+				match := qValuePattern.FindStringSubmatch(st)
 				require.Len(t, match, 3)
 				qValue, err := strconv.ParseFloat(match[1], 64)
 				require.NoError(t, err, "Error parsing q value")
@@ -5897,4 +5937,48 @@ func TestScrapeLoopAppendSampleLimitReplaceAllSamples(t *testing.T) {
 		},
 	}...)
 	requireEqual(t, want, resApp.resultFloats, "Appended samples not as expected:\n%s", slApp)
+}
+
+func TestScrapeLoopDisableStalenessMarkerInjection(t *testing.T) {
+	var (
+		loopDone = atomic.NewBool(false)
+		appender = &collectResultAppender{}
+		scraper  = &testScraper{}
+		app      = func(_ context.Context) storage.Appender { return appender }
+	)
+
+	sl := newBasicScrapeLoop(t, context.Background(), scraper, app, 10*time.Millisecond)
+	scraper.scrapeFunc = func(ctx context.Context, w io.Writer) error {
+		if _, err := w.Write([]byte("metric_a 42\n")); err != nil {
+			return err
+		}
+		return ctx.Err()
+	}
+
+	// Start the scrape loop.
+	go func() {
+		sl.run(nil)
+		loopDone.Store(true)
+	}()
+
+	// Wait for some samples to be appended.
+	require.Eventually(t, func() bool {
+		appender.mtx.Lock()
+		defer appender.mtx.Unlock()
+		return len(appender.resultFloats) > 2
+	}, 5*time.Second, 100*time.Millisecond, "Scrape loop didn't append any samples.")
+
+	// Disable end of run staleness markers and stop the loop.
+	sl.disableEndOfRunStalenessMarkers()
+	sl.stop()
+	require.Eventually(t, func() bool {
+		return loopDone.Load()
+	}, 5*time.Second, 100*time.Millisecond, "Scrape loop didn't stop.")
+
+	// No stale markers should be appended, since they were disabled.
+	for _, s := range appender.resultFloats {
+		if value.IsStaleNaN(s.f) {
+			t.Fatalf("Got stale NaN samples while end of run staleness is disabled: %x", math.Float64bits(s.f))
+		}
+	}
 }

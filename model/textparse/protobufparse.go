@@ -19,9 +19,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"strconv"
-	"strings"
-	"sync"
 	"unicode/utf8"
 
 	"github.com/gogo/protobuf/types"
@@ -34,15 +31,6 @@ import (
 	"github.com/prometheus/prometheus/schema"
 	"github.com/prometheus/prometheus/util/convertnhcb"
 )
-
-// floatFormatBufPool is exclusively used in formatOpenMetricsFloat.
-var floatFormatBufPool = sync.Pool{
-	New: func() any {
-		// To contain at most 17 digits and additional syntax for a float64.
-		b := make([]byte, 0, 24)
-		return &b
-	},
-}
 
 // ProtobufParser parses the old Prometheus protobuf format and present it
 // as the text-style textparse.Parser interface.
@@ -411,24 +399,24 @@ func (p *ProtobufParser) Exemplar(ex *exemplar.Exemplar) bool {
 	return true
 }
 
-// CreatedTimestamp returns CT or 0 if CT is not present on counters, summaries or histograms.
-func (p *ProtobufParser) CreatedTimestamp() int64 {
-	var ct *types.Timestamp
+// StartTimestamp returns ST or 0 if ST is not present on counters, summaries or histograms.
+func (p *ProtobufParser) StartTimestamp() int64 {
+	var st *types.Timestamp
 	switch p.dec.GetType() {
 	case dto.MetricType_COUNTER:
-		ct = p.dec.GetCounter().GetCreatedTimestamp()
+		st = p.dec.GetCounter().GetCreatedTimestamp()
 	case dto.MetricType_SUMMARY:
-		ct = p.dec.GetSummary().GetCreatedTimestamp()
+		st = p.dec.GetSummary().GetCreatedTimestamp()
 	case dto.MetricType_HISTOGRAM, dto.MetricType_GAUGE_HISTOGRAM:
-		ct = p.dec.GetHistogram().GetCreatedTimestamp()
+		st = p.dec.GetHistogram().GetCreatedTimestamp()
 	default:
 	}
-	if ct == nil {
+	if st == nil {
 		return 0
 	}
 	// Same as the gogo proto types.TimestampFromProto but straight to integer.
 	// and without validation.
-	return ct.GetSeconds()*1e3 + int64(ct.GetNanos())/1e6
+	return st.GetSeconds()*1e3 + int64(st.GetNanos())/1e6
 }
 
 // Next advances the parser to the next "sample" (emulating the behavior of a
@@ -476,16 +464,6 @@ func (p *ProtobufParser) Next() (Entry, error) {
 			// All good.
 		default:
 			return EntryInvalid, fmt.Errorf("unknown metric type for metric %q: %s", name, p.dec.GetType())
-		}
-		unit := p.dec.GetUnit()
-		if len(unit) > 0 {
-			if p.dec.GetType() == dto.MetricType_COUNTER && strings.HasSuffix(name, "_total") {
-				if !strings.HasSuffix(name[:len(name)-6], unit) || len(name)-6 < len(unit)+1 || name[len(name)-6-len(unit)-1] != '_' {
-					return EntryInvalid, fmt.Errorf("unit %q not a suffix of counter %q", unit, name)
-				}
-			} else if !strings.HasSuffix(name, unit) || len(name) < len(unit)+1 || name[len(name)-len(unit)-1] != '_' {
-				return EntryInvalid, fmt.Errorf("unit %q not a suffix of metric %q", unit, name)
-			}
 		}
 		p.entryBytes.Reset()
 		p.entryBytes.WriteString(name)
@@ -698,7 +676,7 @@ func (p *ProtobufParser) getMagicLabel() (bool, string, string) {
 		qq := p.dec.GetSummary().GetQuantile()
 		q := qq[p.fieldPos]
 		p.fieldsDone = p.fieldPos == len(qq)-1
-		return true, model.QuantileLabel, formatOpenMetricsFloat(q.GetQuantile())
+		return true, model.QuantileLabel, labels.FormatOpenMetricsFloat(q.GetQuantile())
 	case dto.MetricType_HISTOGRAM, dto.MetricType_GAUGE_HISTOGRAM:
 		bb := p.dec.GetHistogram().GetBucket()
 		if p.fieldPos >= len(bb) {
@@ -707,39 +685,9 @@ func (p *ProtobufParser) getMagicLabel() (bool, string, string) {
 		}
 		b := bb[p.fieldPos]
 		p.fieldsDone = math.IsInf(b.GetUpperBound(), +1)
-		return true, model.BucketLabel, formatOpenMetricsFloat(b.GetUpperBound())
+		return true, model.BucketLabel, labels.FormatOpenMetricsFloat(b.GetUpperBound())
 	}
 	return false, "", ""
-}
-
-// formatOpenMetricsFloat works like the usual Go string formatting of a float
-// but appends ".0" if the resulting number would otherwise contain neither a
-// "." nor an "e".
-func formatOpenMetricsFloat(f float64) string {
-	// A few common cases hardcoded.
-	switch {
-	case f == 1:
-		return "1.0"
-	case f == 0:
-		return "0.0"
-	case f == -1:
-		return "-1.0"
-	case math.IsNaN(f):
-		return "NaN"
-	case math.IsInf(f, +1):
-		return "+Inf"
-	case math.IsInf(f, -1):
-		return "-Inf"
-	}
-	bp := floatFormatBufPool.Get().(*[]byte)
-	defer floatFormatBufPool.Put(bp)
-
-	*bp = strconv.AppendFloat((*bp)[:0], f, 'g', -1, 64)
-	if bytes.ContainsAny(*bp, "e.") {
-		return string(*bp)
-	}
-	*bp = append(*bp, '.', '0')
-	return string(*bp)
 }
 
 // isNativeHistogram returns false iff the provided histograms has no spans at

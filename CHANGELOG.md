@@ -2,6 +2,63 @@
 
 ## main / unreleased
 
+* [BUGFIX] TSDB: Register `prometheus_tsdb_sample_ooo_delta` metric properly. #17477
+
+## 3.8.1 / 2025-12-16
+
+* [BUGFIX] remote: Fix Remote Write receiver, so it does not send wrong response headers for v1 flow and cause Prometheus senders to emit false partial error log and metrics. #17683
+
+## 3.8.0 / 2025-11-28
+
+* [CHANGE] Remote-write: Update receiving to [2.0-rc.4 spec](https://github.com/prometheus/docs/blob/60c24e450010df38cfcb4f65df874f6f9b26dbcb/docs/specs/prw/remote_write_spec_2_0.md). "created timestamp" (CT) is now called "start timestamp" (ST). #17411
+* [CHANGE] TSDB: Native Histogram Custom Bounds with a NaN threshold are now rejected. #17287
+* [FEATURE] OAuth2: support jwt-bearer grant-type (RFC7523 3.1). #17592
+* [FEATURE] Dockerfile: Add OpenContainers spec labels to Dockerfile. #16483
+* [FEATURE] SD: Add unified AWS service discovery for ec2, lightsail and ecs services. #17406
+* [FEATURE] Native histograms are now a stable, but optional feature, use the `scrape_native_histogram` config setting. #17232 #17315
+* [FEATURE] UI: Support anchored and smoothed keyword in promql editor. #17239
+* [FEATURE] UI: Show detailed relabeling steps for each discovered target. #17337
+* [FEATURE] Alerting: Add urlQueryEscape to template functions. #17403
+* [FEATURE] Promtool: Add  Remote-Write 2.0 support to `promtool push metrics` via the `--protobuf_message` flag. #17417
+* [ENHANCEMENT] Clarify the docs about handling negative native histograms.  #17249
+* [ENHANCEMENT] Mixin: Add static UID to the remote-write dashboard. #17256
+* [ENHANCEMENT] PromQL: Reconcile mismatched NHCB bounds in `Add` and `Sub`. #17278
+* [ENHANCEMENT] Alerting: Add "unknown" state for alerting rules that haven't been evaluated yet. #17282
+* [ENHANCEMENT] Scrape: Allow simultaneous use of classic histogram → NHCB conversion and zero-timestamp ingestion. #17305
+* [ENHANCEMENT] UI: Add smoothed/anchored in explain. #17334
+* [ENHANCEMENT] OTLP: De-duplicate any `target_info` samples with the same timestamp for the same series. #17400
+* [ENHANCEMENT] Document `use_fips_sts_endpoint` in `sigv4` config sections. #17304
+* [ENHANCEMENT] Document Prometheus Agent. #14519
+* [PERF] PromQL: Speed up parsing of variadic functions. #17316
+* [PERF] UI: Speed up alerts/rules/... pages by not rendering collapsed content. #17485
+* [PERF] UI: Performance improvement when getting label name and values in promql editor. #17194
+* [PERF] UI: Speed up /alerts for many firing alerts via virtual scrolling.  #17254
+* [BUGFIX] PromQL: Fix slice indexing bug in info function on churning series. #17199
+* [BUGFIX] API: Reduce lock contention on `/api/v1/targets`. #17306
+* [BUGFIX] PromQL: Consistent handling of gauge vs. counter histograms in aggregations. #17312
+* [BUGFIX] TSDB: Allow NHCB with -Inf as the first custom value. #17320
+* [BUGFIX] UI: Fix duplicate loading of data from the API speed up rendering of some pages. #17357
+* [BUGFIX] Old UI: Fix createExpressionLink to correctly build /graph URLs so links from Alerts/Rules work again. #17365
+* [BUGFIX] PromQL: Avoid panic when parsing malformed `info` call. #17379
+* [BUGFIX] PromQL: Include histograms when enforcing sample_limit. #17390
+* [BUGFIX] Config: Fix panic if TLS CA file is absent. #17418
+* [BUGFIX] PromQL: Fix `histogram_fraction` for classic histograms and NHCB if lower bound is in the first bucket. #17424
+
+## 3.7.3 / 2025-10-29
+
+* [BUGFIX] UI: Revert changed (and breaking) redirect behavior for `-web.external-url` if `-web.route-prefix` is configured, which was introduced in #17240. #17389
+* [BUGFIX] Fix federation of some native histograms. #17299 #17409
+* [BUGFIX] promtool: `check config` would fail when `--lint=none` flag was set. #17399 #17414
+* [BUGFIX] Remote-write: fix a deadlock in the queue resharding logic that can lead to suboptimal queue behavior. #17412
+
+## 3.7.2 / 2025-10-22
+
+* [BUGFIX] AWS SD: Fix AWS SDK v2 credentials handling for EC2 and Lightsail discovery. #17355
+* [BUGFIX] AWS SD: Load AWS region from IMDS when not set. #17376
+* [BUGFIX] Relabeling: Fix `labelmap` action validation with the legacy metric name validation scheme. #17372
+* [BUGFIX] PromQL: Fix parsing failure when `anchored` and `smoothed` are used as metric names and label names. #17353
+* [BUGFIX] PromQL: Fix formatting of range vector selectors with `smoothed`/`anchored` modifier. #17354
+
 ## 3.7.1 / 2025-10-16
 
 * [BUGFIX] OTLP: Prefix `key_` to label name when translating an OTel attribute name starting with a single underscore, and keep multiple consecutive underscores in label name when translating an OTel attribute name. This reverts the breaking changes introduced in 3.7.0. #17344
@@ -48,7 +105,7 @@
 * [BUGFIX] TSDB: Avoid misleading `Failed to calculate size of \"wal\" dir` error logs during WAL clean-up. #17006
 * [BUGFIX] TSDB: Prevent erroneously dropping series records during WAL checkpoints. #17029
 * [BUGFIX] UI: Fix redirect to path of `-web.external-url` if `-web.route-prefix` is configured. #17240
-* [BUGIFX] Remote-write: Do not panic on invalid symbol table in remote-write 2.0. #17160
+* [BUGFIX] Remote-write: Do not panic on invalid symbol table in remote-write 2.0. #17160
 
 ## 3.6.0 / 2025-09-17
 

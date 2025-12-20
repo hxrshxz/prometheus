@@ -569,7 +569,7 @@ func BenchmarkAlertingRuleAtomicField(b *testing.B) {
 	rule := NewAlertingRule("bench", nil, 0, 0, labels.EmptyLabels(), labels.EmptyLabels(), labels.EmptyLabels(), "", true, nil)
 	done := make(chan struct{})
 	go func() {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			rule.GetEvaluationTimestamp()
 		}
 		close(done)
@@ -594,8 +594,7 @@ func TestAlertingRuleDuplicate(t *testing.T) {
 	}
 
 	engine := promqltest.NewTestEngineWithOpts(t, opts)
-	ctx, cancelCtx := context.WithCancel(context.Background())
-	defer cancelCtx()
+	ctx := t.Context()
 
 	now := time.Now()
 
@@ -613,7 +612,7 @@ func TestAlertingRuleDuplicate(t *testing.T) {
 	)
 	_, err := rule.Eval(ctx, 0, now, EngineQueryFunc(engine, storage), nil, 0)
 	require.Error(t, err)
-	require.EqualError(t, err, "vector contains metrics with the same labelset after applying alert labels")
+	require.ErrorIs(t, err, ErrDuplicateAlertLabelSet)
 }
 
 func TestAlertingRuleLimit(t *testing.T) {
